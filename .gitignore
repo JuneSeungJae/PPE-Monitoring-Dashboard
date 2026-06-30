@@ -1,0 +1,12 @@
+﻿node_modules/
+frontend/.env
+dist/
+.venv/
+.gradle/
+build/
+bin/
+__pycache__/
+*.pyc
+uploads/
+.DS_Store
+Thumbs.db

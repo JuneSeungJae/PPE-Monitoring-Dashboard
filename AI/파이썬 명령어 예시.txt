@@ -1,0 +1,91 @@
+import cv2
+from ultralytics import YOLO
+import requests
+import json
+
+# 1. 모델 로드 (코랩에서 가져온 best.pt 파일 경로)
+model = YOLO('best.pt')
+
+# 2. 영상 소스 선택
+# 0: 웹캠 사용 / 'video.mp4': 동영상 파일 사용
+cap = cv2.VideoCapture(0)
+
+# 3. 설정값
+CCTV_NO = "CAM-01"           # CCTV 식별 번호
+TARGET_CLASS_NAME = "helmet"  # 감지하고 싶은 클래스명 (코랩 학습 시 이름)
+BACKEND_URL = "http://localhost:8080/api/event"  # 스프링 부트 주소
+CONFIDENCE_THRESHOLD = 0.5   # 정확도 50% 이상만 인정
+
+# detectedCode 매핑 (DetectedType enum과 일치)
+# 1: 헬멧 미착용, 2: 조끼 미착용, 3: 헬멧+조끼 미착용
+DETECTED_CODE_MAP = {
+    "helmet": 1,
+    "vest": 2,
+}
+
+# 상태 관리 변수
+is_present_before = False     # 이전 프레임에 타겟이 있었는가?
+
+print("모니터링 시작... (종료하려면 'q'를 누르세요)")
+
+while cap.isOpened():
+    success, frame = cap.read()
+    if not success:
+        break
+
+    # YOLO 추론 실행
+    results = model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)
+
+    # 현재 프레임에 타겟 클래스가 존재하는지 확인
+    found_now = False
+    best_confidence = 0.0
+    best_bbox = None
+
+    for r in results:
+        for box in r.boxes:
+            class_idx = int(box.cls)
+            class_name = model.names[class_idx]
+            if class_name == TARGET_CLASS_NAME:
+                found_now = True
+                conf = float(box.conf)
+                if conf > best_confidence:
+                    best_confidence = conf
+                    best_bbox = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
+
+    # --- 핵심 로직: 상태 변화 감지 ---
+    # 보이다가(True) 안 보이게(False) 된 순간 감지
+    if is_present_before == True and found_now == False:
+        print(f"[EVENT] {TARGET_CLASS_NAME} 사라짐 감지!")
+
+        # 백엔드로 전송할 데이터 (EventCreateRequest DTO 구조와 일치)
+        payload = {
+            "cctvNo": CCTV_NO,
+            "detectedCode": DETECTED_CODE_MAP.get(TARGET_CLASS_NAME, 0),
+            "confidence": best_confidence if best_confidence > 0 else None,
+            "bboxJson": json.dumps(best_bbox) if best_bbox else None
+        }
+
+        try:
+            # POST 요청 전송
+            response = requests.post(BACKEND_URL, json=payload, timeout=3)
+            if response.status_code == 200:
+                print("백엔드 전송 성공!")
+            else:
+                print(f"백엔드 오류: {response.status_code}")
+        except Exception as e:
+            print(f"서버 연결 실패: {e}")
+
+    # 현재 상태를 이전 상태로 저장 (다음 프레임 비교용)
+    is_present_before = found_now
+
+    # 실시간 화면 표시 (선택 사항)
+    annotated_frame = results[0].plot()
+    cv2.imshow("PPE AI Monitoring", annotated_frame)
+
+    # 'q' 누르면 종료
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+print("모니터링 종료")
