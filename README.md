@@ -153,6 +153,33 @@ PPE-monitoring/
 
 ---
 
+### 빠른 실행 (Windows: start.bat)
+
+Windows 환경에서는 프로젝트 루트의 `start.bat`를 실행하면 백엔드, 감지 서버, 프론트엔드를 한 번에 실행할 수 있습니다.
+
+```bat
+cd <프로젝트 루트>
+start.bat
+```
+
+실행 순서:
+1. MySQL이 실행 중인지 확인합니다.
+2. Detector용 Python 가상환경이 준비되어 있어야 합니다. 없으면 먼저 아래 명령으로 생성합니다.
+
+```bat
+cd detector
+python -m venv ..\.venv
+..\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. `start.bat` 실행 시 Spring Boot(`:8080`), FastAPI Detector(`:8000`), React(`:5173`)가 각각 별도 창에서 실행됩니다.
+4. 실행 후 브라우저에서 `http://localhost:5173`으로 접속합니다.
+
+> 기본 로그인 계정: `safety-admin / admin1234`
+
+---
+
 ### 1. MySQL DB 설정
 
 ```sql
